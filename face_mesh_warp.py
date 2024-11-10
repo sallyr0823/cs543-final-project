@@ -39,6 +39,48 @@ def get_landmarks(image):
             landmarks.append([x, y])
             
         return np.array(landmarks)
+    
+def segment_face_parts(image, landmarks):
+    """
+    Segment facial parts (eyes, nose, mouth) from the image based on landmarks.
+    
+    Parameters:
+    - image: The original image.
+    - landmarks: An array of facial landmarks.
+    
+    Returns:
+    - segments: A dictionary containing segmented facial parts as images.
+    """
+    # Define landmark indices for different facial parts
+    FACIAL_PARTS = {
+        'left_eye': [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
+        'right_eye': [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466],
+        'nose': [1, 2, 98, 327, 168, 197, 195, 5, 4, 51, 19, 94, 2],
+        'mouth': [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87],
+        'left_eyebrow': [70, 63, 105, 66, 107, 55, 65],
+        'right_eyebrow': [336, 296, 334, 293, 300, 276, 283]
+    }
+    
+    segments = {}
+    
+    for part_name, indices in FACIAL_PARTS.items():
+        # Get the points for the facial part
+        points = np.array([landmarks[idx] for idx in indices], np.int32)
+        
+        # Create a mask for the facial part
+        mask = np.zeros(image.shape[:2], dtype=np.uint8)
+        cv2.fillPoly(mask, [points], 255)
+        
+        # Extract the facial part using the mask
+        segmented_part = cv2.bitwise_and(image, image, mask=mask)
+        
+        # Crop the segmented part to its bounding rectangle
+        x, y, w, h = cv2.boundingRect(points)
+        cropped_part = segmented_part[y:y+h, x:x+w]
+        
+        segments[part_name] = cropped_part
+    
+    return segments
 
 def visualize_landmarks(image, landmarks):
     """Visualize landmarks on the image"""
@@ -46,6 +88,7 @@ def visualize_landmarks(image, landmarks):
     for point in landmarks:
         cv2.circle(img_copy, tuple(point), 2, (0, 255, 0), -1)
     return img_copy
+
 
 def create_triangle_mesh(landmarks, image_shape):
     """Create Delaunay triangulation from landmarks"""
@@ -164,8 +207,11 @@ def warp_face(source_img, target_img):
     return warped_img
 
 # Use the functions
-source_path =  '0d384dbbcc121ca5049c423f81c26e6a.png' # Replace with your source image path
-target_path = 'vSYYZ1.png'  # Replace with your target image path
+# source_path =  '0d384dbbcc121ca5049c423f81c26e6a.png' # Replace with your source image path
+# target_path = 'black_model.png'  # Replace with your target image path
+
+target_path =  '0d384dbbcc121ca5049c423f81c26e6a.png' # Replace with your source image path
+source_path = 'black_model.png'
 
 source_img = cv2.imread(source_path)
 target_img = cv2.imread(target_path)
@@ -179,3 +225,12 @@ for img in [source_img, target_img]:
 
 # Perform the warping
 warped_result = warp_face(source_img, target_img)
+
+# Get landmarks for the source image
+source_landmarks = get_landmarks(source_img)
+# Segment facial parts from the source image
+segments = segment_face_parts(source_img, source_landmarks)
+
+# Display the segmented parts
+for part_name, part_img in segments.items():
+    show_image(f"Segmented {part_name}", part_img)

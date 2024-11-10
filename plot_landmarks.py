@@ -89,5 +89,6 @@ def plot_face_mesh_points(image_path):
         plt.close()
 
 # Use the function
-image_path = 'vSYYZ1.png'  # Replace with your image path
+# 0d384dbbcc121ca5049c423f81c26e6a.png, vsYYZ1.png
+image_path = '0d384dbbcc121ca5049c423f81c26e6a.png'  # Replace with your image path
 plot_face_mesh_points(image_path)
