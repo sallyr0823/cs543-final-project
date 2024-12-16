@@ -110,6 +110,9 @@ class FaceWarper:
         for triangle in triangles:
             pts = points[triangle]
             cv2.fillConvexPoly(mask, pts, 255)
+            
+        # Save the full face mask before cropping
+        cv2.imwrite('full_face_mask.png', mask)
         
         x, y, w, h = cv2.boundingRect(points[np.unique(triangles.flatten())])
         masked_face = cv2.bitwise_and(image, image, mask=mask)
@@ -119,9 +122,9 @@ class FaceWarper:
         b, g, r = cv2.split(cropped_face)
         cropped_face_rgba = cv2.merge((b, g, r, cropped_mask))
         
-        return cropped_face_rgba
+        # Return both the face and its coordinates and full face mask
+        return cropped_face_rgba, (x, y, w, h), mask
 
-    @staticmethod
     @staticmethod
     def warp_triangle(src_points, dst_points, src_triangle, dst_triangle, src_img, dst_img):
         """Warp a triangular region from source to destination."""
@@ -173,38 +176,23 @@ class FaceWarper:
         dst_img[rect2[1]:rect2[1] + rect2[3], rect2[0]:rect2[0] + rect2[2]] = blended.astype(np.uint8)
 
     @staticmethod
-    def replace_face_in_fullbody(fullbody_image, makeup_face, face_coords):
-        """Replace face in fullbody image with warped makeup face."""
-        x1, y1, x2, y2 = face_coords
-        
-        # Get landmarks and mesh for makeup face
-        landmark_detector = FaceLandmarkDetector()
-        makeup_landmarks = landmark_detector.get_landmarks(makeup_face)
-        triangles = FaceWarper.create_triangle_mesh(makeup_landmarks, makeup_face.shape)
-        cropped_makeup_face = FaceWarper.extract_face_region(makeup_face, makeup_landmarks, triangles)
-        cv2.imwrite('cropped_makeup_face.png', cropped_makeup_face)
-        
-        # Resize makeup face to match target face dimensions
-        face_height = y2 - y1
-        face_width = x2 - x1
-        makeup_face_resized = cv2.resize(cropped_makeup_face, (face_width, face_height))
-        
-        # Create result image and blending mask
+    def replace_face_in_fullbody(fullbody_image, warped_img, face_mask):
+        """Replace face in fullbody image with warped makeup face using the original face mask."""
         result_image = fullbody_image.copy()
-        mask = np.zeros((face_height, face_width), dtype=np.float32)
-        center = (face_width // 2, face_height // 2)
-        radius = min(face_width, face_height) // 2
-        cv2.circle(mask, center, radius, 1.0, -1)
+        
+        # Convert mask to float32 and normalize
+        mask = face_mask.astype(np.float32) / 255.0
+        
+        # Apply Gaussian blur to smooth the edges
         mask = cv2.GaussianBlur(mask, (19, 19), 0)
         
-        # Blend faces
-        for c in range(3):
-            result_image[y1:y2, x1:x2, c] = (
-                makeup_face_resized[:, :, c] * mask +
-                fullbody_image[y1:y2, x1:x2, c] * (1 - mask)
-            )
+        # Expand mask to 3 channels
+        mask = np.stack([mask] * 3, axis=-1)
         
-        return result_image
+        # Blend using the mask
+        result_image = warped_img * mask + fullbody_image * (1 - mask)
+        
+        return result_image.astype(np.uint8)
 
 
 
@@ -341,8 +329,13 @@ def main():
     target_triangles = FaceWarper.create_triangle_mesh(target_landmarks, target_img.shape)
     
     # Extract faces and save intermediate results
-    extracted_source_face = FaceWarper.extract_face_region(source_img, source_landmarks, source_triangles)
-    extracted_target_face = FaceWarper.extract_face_region(target_img, target_landmarks, target_triangles)
+    extracted_source_face, source_coords, source_mask = FaceWarper.extract_face_region(source_img, source_landmarks, source_triangles)
+    extracted_target_face, target_coords, full_target_mask = FaceWarper.extract_face_region(target_img, target_landmarks, target_triangles)
+    
+    # Save coordinates to a file
+    with open('face_coordinates.txt', 'w') as f:
+        f.write(f"Source face coordinates (x, y, w, h): {source_coords}\n")
+        f.write(f"Target face coordinates (x, y, w, h): {target_coords}\n")
     
     cv2.imwrite('extracted_source_face.png', extracted_source_face)
     cv2.imwrite('extracted_target_face.png', extracted_target_face)
@@ -368,10 +361,12 @@ def main():
     # Save warped result
     cv2.imwrite('warped_result.png', warped_img)
     
-    # Replace face in fullbody image
-    face_coords = face_detector.detect_face(target_img)
-    final_result = FaceWarper.replace_face_in_fullbody(target_img, warped_img, face_coords)
+    print("Warped image shape:", warped_img.shape)
+    print("Warped image min/max values:", np.min(warped_img), np.max(warped_img))
     
+    # Replace face in fullbody image using stored coordinates
+    final_result = FaceWarper.replace_face_in_fullbody(target_img, warped_img, full_target_mask)
+ 
     # Save final result
     cv2.imwrite('final_result.png', final_result)
     
