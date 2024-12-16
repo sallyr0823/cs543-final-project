@@ -1,3 +1,4 @@
+import os
 import mediapipe as mp
 import numpy as np
 import cv2
@@ -25,55 +26,10 @@ def detect_face_mtcnn(image):
     if not results:
         raise ValueError("No face detected in the image")
 
+    print('MTCC perform face detection!!!')
     x1, y1, width, height = results[0]["box"]
     x2, y2 = x1 + width, y1 + height
     return x1, y1, x2, y2
-
-
-# mediapipe face detection failed
-# def detect_face(image):
-#     """Detect face in the image using MediaPipe Face Detection."""
-#     mp_face_detection = mp.solutions.face_detection
-
-#     # Resize image if it is too large
-#     max_width = 640
-#     if image.shape[1] > max_width:
-#         scale_ratio = max_width / image.shape[1]
-#         image = cv2.resize(image, (max_width, int(image.shape[0] * scale_ratio)))
-
-#     # Convert BGR to RGB
-#     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-#     # Initialize face detector with a lower confidence threshold
-#     with mp_face_detection.FaceDetection(
-#         model_selection=1,  # Use model 1 for small faces
-#         min_detection_confidence=0.3) as face_detection:
-
-#         # Perform face detection
-#         detection_results = face_detection.process(image_rgb)
-
-#         if not detection_results.detections:
-#             raise ValueError("No face detected in the image")
-
-#         # Get the first detected face
-#         detection = detection_results.detections[0]
-
-#         # Extract bounding box
-#         bboxC = detection.location_data.relative_bounding_box
-#         h, w, _ = image.shape
-#         x1 = int(bboxC.xmin * w)
-#         y1 = int(bboxC.ymin * h)
-#         x2 = x1 + int(bboxC.width * w)
-#         y2 = y1 + int(bboxC.height * h)
-
-#         # Ensure coordinates are within the image
-#         x1 = max(0, x1)
-#         y1 = max(0, y1)
-#         x2 = min(w, x2)
-#         y2 = min(h, y2)
-
-#         # Return the face region coordinates
-#         return x1, y1, x2, y2
 
 
 def get_landmarks(image):
@@ -251,14 +207,6 @@ def segment_face_parts(image, landmarks):
 
 def visualize_landmarks(image, landmarks):
     """Draw landmarks and their indices on the image."""
-    # for idx, (x, y) in enumerate(landmarks):
-    #     # Draw a small circle
-    #     cv2.circle(image, (int(x), int(y)), 1, (0, 255, 0), -1)
-    #     # Put the index number next to the landmark with reduced font size
-    #     if idx % 3 == 0:  # Display the index every 5th point, adjust this number for more/less sparsity
-    #         cv2.putText(image, str(idx), (int(x) + 2, int(y) - 2),
-    #                     cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
-    # return image
     img_copy = image.copy()
     for point in landmarks:
         cv2.circle(img_copy, tuple(point), 2, (0, 255, 0), -1)
@@ -363,6 +311,43 @@ def warp_triangle(src_points, dst_points, src_triangle, dst_triangle, src_img, d
     )
 
 
+def extract_face_region(image, landmarks, triangles):
+    """
+    Extracts the face region from the image using landmarks and triangulation
+    
+    Args:
+        image: Original image
+        landmarks: Facial landmark points
+        triangles: Triangulation indices defining the face mesh
+    """
+    # Create a mask using the triangulation
+    mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    
+    # Convert landmarks to numpy array if not already
+    points = np.array(landmarks, dtype=np.int32)
+    
+    # Draw all triangles on the mask
+    for triangle in triangles:
+        pts = points[triangle]
+        cv2.fillConvexPoly(mask, pts, 255)
+    
+    # Get the bounding rectangle of the triangulated region
+    x, y, w, h = cv2.boundingRect(points[np.unique(triangles.flatten())])
+    
+    # Apply the mask to the image
+    masked_face = cv2.bitwise_and(image, image, mask=mask)
+    
+    # Crop to the bounding rectangle
+    cropped_face = masked_face[y:y+h, x:x+w]
+    cropped_mask = mask[y:y+h, x:x+w]
+    
+    # Add alpha channel (transparency)
+    b, g, r = cv2.split(cropped_face)
+    cropped_face_rgba = cv2.merge((b, g, r, cropped_mask))
+    
+    show_image('extracted face',cropped_face)
+    return cropped_face_rgba
+
 def warp_face(source_img, target_img):
     """Main function to warp face from source to target"""
     # Get landmarks for both images
@@ -378,23 +363,29 @@ def warp_face(source_img, target_img):
     )
 
     # Create triangulation
-    triangles = create_triangle_mesh(source_landmarks, source_img.shape)
+    target_triangles = create_triangle_mesh(target_landmarks, target_img.shape)
+    # extract the image from the target/dst image
+    extracted_target_face=extract_face_region(target_img, target_landmarks, target_triangles)
+    cv2.imwrite("extracted_target_face.png", extracted_target_face)
 
+    source_triangles = create_triangle_mesh(source_landmarks,source_img.shape)
+    extracted_source_face = extract_face_region(source_img,source_landmarks,source_triangles)
+    cv2.imwrite('extracted_source_face.png',extracted_source_face)
     # Show triangulation
     show_image(
         "Source triangulation",
-        visualize_triangulation(source_img, source_landmarks, triangles),
+        visualize_triangulation(source_img, source_landmarks, source_triangles),
     )
     show_image(
         "Target triangulation",
-        visualize_triangulation(target_img, target_landmarks, triangles),
+        visualize_triangulation(target_img, target_landmarks, target_triangles),
     )
 
     # Create output image
     warped_img = np.zeros_like(target_img)
 
     # Warp each triangle
-    for triangle in triangles:
+    for triangle in source_triangles:
         src_triangle = source_landmarks[triangle]
         dst_triangle = target_landmarks[triangle]
 
@@ -409,19 +400,82 @@ def warp_face(source_img, target_img):
 
     # Show final result
     show_image("Warped Result", warped_img)
-
+    output_path = "warped_result.png" 
+    cv2.imwrite(output_path, warped_img)
     return warped_img
 
+def create_facial_mask(image, landmarks):
+    """
+    Creates a binary mask highlighting facial features using specific landmark indices
+    
+    Args:
+        image: Original image
+        landmarks: Array of facial landmark points
+    
+    Returns:
+        mask: Binary mask image with facial features
+    """
+    # Create a black background
+    mask = np.ones(image.shape[:2], dtype=np.uint8) * 255
+    
+    # Define facial part indices
+    FACIAL_PARTS = {
+        "Face_oval": [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109],
+        "Left_eye": [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
+        "Right_eye": [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398],
+        "Lips": [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185],
+        "Left_eyebrow": [276, 283, 282, 295, 285, 300, 293, 334, 296, 336],
+        "Right_eyebrow": [46, 53, 52, 65, 55, 70, 63, 105, 66, 107],
+        "Nose": [8, 190, 128, 98, 327, 326, 327, 2, 327, 417, 8]
+    }
 
-# Use the functions
-# source_path =  '0d384dbbcc121ca5049c423f81c26e6a.png' # Replace with your source image path
-# target_path = 'black_model.png'  # Replace with your target image path
+    # Draw each facial part
+    for part_name, indices in FACIAL_PARTS.items():
+        # Get the points for the facial part
+        points = np.array([landmarks[idx] for idx in indices], dtype=np.int32)
+        if part_name == "Face_oval" or part_name=="Nose":
+        # Draw face outline as a line
+            cv2.polylines(mask, [points], True, 0, 2)
+        # Fill the facial part area
+        else:
+            cv2.fillPoly(mask, [points], 0)
+        
+        # If it's eyes or mouth, create inner area
+        if part_name in ["Left_eye", "Right_eye", "Lips"]:
+            # Create slightly smaller inner polygon
+            center = np.mean(points, axis=0)
+            points_centered = points - center
+            points_scaled = points_centered * 0.8  # Scale down to 80%
+            points_inner = (points_scaled + center).astype(np.int32)
+            cv2.fillPoly(mask, [points_inner], 0)
 
-# black_model.png
-target_path = (
-    "0d384dbbcc121ca5049c423f81c26e6a.png"  # Replace with your source image path
-)
-source_path = "fullbody_model.png"
+    # Optional: Apply slight Gaussian blur for smoother edges
+    mask = cv2.GaussianBlur(mask, (3, 3), 0)
+    
+    # Threshold to make it purely binary
+    _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+    
+    return mask
+
+def save_facial_mask(image, landmarks, output_path="facial_mask.png"):
+    """
+    Creates and saves the facial mask
+    """
+    mask = create_facial_mask(image, landmarks)
+    cv2.imwrite(output_path, mask)
+    show_image("Facial Mask", mask)
+    return mask
+
+
+current_dir = os.getcwd()
+target_path = os.path.join(current_dir, "fullbody_model.png")
+# "0d384dbbcc121ca5049c423f81c26e6a.png"
+source_path = os.path.join(current_dir,"0d384dbbcc121ca5049c423f81c26e6a.png" )
+
+if not os.path.exists(source_path):
+    raise FileNotFoundError(f"Source image not found: {source_path}")
+if not os.path.exists(target_path):
+    raise FileNotFoundError(f"Target image not found: {target_path}")
 
 source_img = cv2.imread(source_path)
 target_img = cv2.imread(target_path)
@@ -436,15 +490,56 @@ for img in [source_img, target_img]:
 # Perform the warping
 warped_result = warp_face(source_img, target_img)
 
-# Get landmarks for the source image
-source_landmarks = get_landmarks(source_img)
-# Segment facial parts from the source image
-segments = segment_face_parts(source_img, source_landmarks)
-
-# Display the segmented parts
-for part_name, part_img in segments.items():
-    show_image(f"Segmented {part_name}", part_img)
-
 
 fullbody_img = cv2.imread("fullbody_model.png")
 fullbody_face_landmarks = get_landmarks(fullbody_img)
+
+extracted_target_face = cv2.imread('extracted_target_face.png')
+extracted_target_face_landmarks = get_landmarks(extracted_target_face)
+mask = save_facial_mask(extracted_target_face, extracted_target_face_landmarks)
+
+def replace_face_in_fullbody(fullbody_image, makeup_face, face_coords):
+    x1, y1, x2, y2 = face_coords
+
+    makeup_landmarks = get_landmarks(makeup_face)
+    triangles = create_triangle_mesh(makeup_landmarks, makeup_face.shape)
+    croped_makeup_face = extract_face_region(makeup_face,makeup_landmarks,triangles)
+    cv2.imwrite('croped_makeup_face.png',croped_makeup_face)
+    # Resize the makeup face to match the original face dimensions
+    face_height = y2 - y1
+    face_width = x2 - x1
+    makeup_face_resized = cv2.resize(croped_makeup_face, (face_width, face_height))
+    
+    # Create a copy of the fullbody image
+    result_image = fullbody_image.copy()
+    
+    # Optional: Create a mask for smooth blending
+    mask = np.zeros((face_height, face_width), dtype=np.float32)
+    center = (face_width // 2, face_height // 2)
+    radius = min(face_width, face_height) // 2
+    cv2.circle(mask, center, radius, 1.0, -1)
+    mask = cv2.GaussianBlur(mask, (19, 19), 0)
+    
+    # Blend the face back into the image
+    for c in range(3):  # for each color channel
+        result_image[y1:y2, x1:x2, c] = (
+            makeup_face_resized[:, :, c] * mask + 
+            fullbody_image[y1:y2, x1:x2, c] * (1 - mask)
+        )
+    show_image('replace face in full body image',result_image)
+    return result_image
+
+# Usage example:
+# fullbody_img = original full body image
+# face_coords = coordinates from detect_face_mtcnn()
+# makeup_face = the processed face with makeup applied
+
+# Detect face and get coordinates
+face_coords = detect_face_mtcnn(fullbody_img)
+makeup_face = warped_result
+
+# # After applying makeup to the cropped face...
+result = replace_face_in_fullbody(fullbody_img, makeup_face, face_coords)
+
+
+
