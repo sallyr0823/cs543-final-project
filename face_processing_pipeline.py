@@ -206,6 +206,60 @@ class FaceWarper:
         
         return result_image
 
+
+
+def smooth_mask(mask, height, width):
+    """
+    Apply specialized smoothing function from the paper:
+    β(p) = min(1 - k(q) * exp(-(q-p)²/(2σ²)))
+    """
+    # Calculate σ²
+    sigma_squared = min(height, width) / 25.0
+    
+    # Create output mask
+    smoothed_mask = np.zeros_like(mask, dtype=np.float32)
+    
+    # Define k(q) values
+    def get_k_value(pixel_value):
+        if abs(pixel_value - 0.3) < 0.01:  # Eyebrow region (0.3)
+            return 0.7
+        elif abs(pixel_value - 1.0) < 0.01:  # Skin area (1.0)
+            return 0.0
+        else:  # Other facial components (0.0)
+            return 1.0
+
+    # For each pixel p
+    for y in range(height):
+        for x in range(width):
+            min_value = float('inf')
+            p = np.array([x, y])
+            
+            # Consider a window around the pixel for efficiency
+            window_size = int(3 * np.sqrt(sigma_squared))  # 3σ captures most of the effect
+            y_start = max(0, y - window_size)
+            y_end = min(height, y + window_size + 1)
+            x_start = max(0, x - window_size)
+            x_end = min(width, x + window_size + 1)
+            
+            # For each pixel q in window
+            for qy in range(y_start, y_end):
+                for qx in range(x_start, x_end):
+                    q = np.array([qx, qy])
+                    
+                    # Calculate squared distance
+                    dist_squared = np.sum((p - q) ** 2)
+                    
+                    # Get k(q) based on the region
+                    k = get_k_value(mask[qy, qx])
+                    
+                    # Calculate the smoothing function
+                    value = 1.0 - k * np.exp(-dist_squared / (2 * sigma_squared))
+                    min_value = min(min_value, value)
+            
+            smoothed_mask[y, x] = min_value
+
+    return smoothed_mask
+
 class FaceMask:
     FACIAL_PARTS = {
         "Face_oval": [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109],
@@ -214,31 +268,48 @@ class FaceMask:
         "Lips": [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185],
         "Left_eyebrow": [276, 283, 282, 295, 285, 300, 293, 334, 296, 336],
         "Right_eyebrow": [46, 53, 52, 65, 55, 70, 63, 105, 66, 107],
-        "Nose": [8, 190, 128, 98, 327, 326, 327, 2, 327, 417, 8]
+        # "Nose": [8, 190, 128, 98, 327, 326, 327, 2, 327, 417, 8]
+        # Modified nose points - removing top points
+        "Nose": [190, 128, 98, 327, 326, 327, 2, 327, 417]  
     }
 
     @staticmethod
     def create_mask(image, landmarks):
-        """Create binary mask of facial features."""
-        mask = np.ones(image.shape[:2], dtype=np.uint8) * 255
+        """Create binary mask of facial features with specific fill rules."""
+        height, width = image.shape[:2]
         
-        for part_name, indices in FaceMask.FACIAL_PARTS.items():
-            points = np.array([landmarks[idx] for idx in indices], dtype=np.int32)
-            
-            if part_name in ["Face_oval", "Nose"]:
-                cv2.polylines(mask, [points], True, 0, 2)
-            else:
-                cv2.fillPoly(mask, [points], 0)
-                
-                if part_name in ["Left_eye", "Right_eye", "Lips"]:
-                    center = np.mean(points, axis=0)
-                    points_centered = points - center
-                    points_inner = (points_centered * 0.8 + center).astype(np.int32)
-                    cv2.fillPoly(mask, [points_inner], 0)
+        # Start with black background
+        mask = np.zeros((height, width), dtype=np.float32)
         
-        mask = cv2.GaussianBlur(mask, (3, 3), 0)
-        _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-        return mask
+        # 1. Find and fill face oval with white
+        face_points = np.array([landmarks[idx] for idx in FaceMask.FACIAL_PARTS["Face_oval"]], dtype=np.int32)
+        cv2.fillPoly(mask, [face_points], 1.0)  # Fill with white (1.0)
+        
+        # 2. Fill eyes with black
+        for eye_part in ["Left_eye", "Right_eye"]:
+            eye_points = np.array([landmarks[idx] for idx in FaceMask.FACIAL_PARTS[eye_part]], dtype=np.int32)
+            cv2.fillPoly(mask, [eye_points], 0.0)  # Fill with black (0.0)
+        
+        # 3. Fill mouth with black
+        mouth_points = np.array([landmarks[idx] for idx in FaceMask.FACIAL_PARTS["Lips"]], dtype=np.int32)
+        cv2.fillPoly(mask, [mouth_points], 0.0)
+        
+        # 4. Fill eyebrows with gray (0.3)
+        for brow_part in ["Left_eyebrow", "Right_eyebrow"]:
+            brow_points = np.array([landmarks[idx] for idx in FaceMask.FACIAL_PARTS[brow_part]], dtype=np.int32)
+            cv2.fillPoly(mask, [brow_points], 0.3)
+        
+       # Modified nose contour - only lower part
+        nose_points = np.array([landmarks[idx] for idx in FaceMask.FACIAL_PARTS["Nose"]], dtype=np.int32)
+        cv2.polylines(mask, [nose_points], False, 0.0, 2)  # Changed to False to not close the contour
+        
+        # Apply the specialized smoothing
+        smoothed_mask = smooth_mask(mask, height, width)
+        
+        # Convert to proper format (0-255 range)
+        smoothed_mask = (smoothed_mask * 255).astype(np.uint8)
+        
+        return smoothed_mask
 
 def main():
     # Initialize components
