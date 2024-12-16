@@ -241,7 +241,6 @@ class FaceMask:
         return mask
 
 def main():
-    print('running clean up version code')
     # Initialize components
     image_utils = ImageUtils()
     face_detector = FaceDetector()
@@ -274,7 +273,7 @@ def main():
     extracted_source_face = FaceWarper.extract_face_region(source_img, source_landmarks, source_triangles)
     extracted_target_face = FaceWarper.extract_face_region(target_img, target_landmarks, target_triangles)
     
-    cv2.imwrite('extracted_source_face_cleanup.png', extracted_source_face)
+    cv2.imwrite('extracted_source_face.png', extracted_source_face)
     cv2.imwrite('extracted_target_face.png', extracted_target_face)
     
     # Create and save facial mask for target face
