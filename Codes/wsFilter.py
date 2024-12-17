@@ -21,7 +21,7 @@ def wls_filter(image_orig, k_array):
     lambda_ = 0.2
     alpha = 1.2
     small_eps = 1e-4
-    image = image_orig.astype(numpy.float) / 255.0
+    image = image_orig.astype(numpy.float64) / 255.0
     s = image.shape
     k = numpy.prod(s)
     dx = numpy.diff(image, 1, 1)
@@ -41,18 +41,18 @@ def wls_filter(image_orig, k_array):
 
 
     dy = numpy.vstack((dy, numpy.zeros((1, s[1]))))
-    dy = dy.flatten(1)
+    dy = dy.flatten(order='F')
 
 
 
     dx = numpy.hstack((dx, numpy.zeros((s[0], 1))))
-    dx = dx.flatten(1)
+    dx = dx.flatten(order='F')
 
     a = spdiags(numpy.vstack((dx, dy)), [-s[0], -1], k, k)
 
     d = 1 - (dx + numpy.roll(dx, s[0]) + dy + numpy.roll(dy, 1))
     a = a + a.T + spdiags(d, 0, k, k)
-    _out = spsolve(a, image.flatten(1)).reshape(s[::-1])
+    _out = spsolve(a, image.flatten(order='F')).reshape(s[::-1])
     out = numpy.rollaxis(_out, 1)
     detail = image - out
     return out, detail
