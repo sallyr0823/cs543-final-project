@@ -9,6 +9,7 @@ from scipy.spatial import Delaunay
 from scipy.sparse import spdiags
 from scipy.sparse.linalg import spsolve
 from scipy.ndimage import gaussian_filter
+# import time
 
 class ImageUtils:
     @staticmethod
@@ -81,6 +82,8 @@ class FaceLandmarkDetector:
         
     def landmark_detection(self,image):
 
+
+        # timestamp = int(time.time())
         ori_image = np.copy(image)
         feature_points = self.get_landmarks(image)
 
@@ -105,8 +108,10 @@ class FaceLandmarkDetector:
         triangles = triangulation.simplices
 
         face,face_coords,mask = FaceWarper.extract_face_region(image, feature_points,triangles)
-        cv2.imwrite("face.png",face)
+        # print("used?")
+        # cv2.imwrite(f"face_{timestamp}.png",face)
         mask = FaceMask.create_mask(ori_image,feature_points)
+        # cv2.imwrite(f"mask_{timestamp}.png",mask)
 
         for triangle in triangles:
             cv2.line(ori_image, (feature_points[triangle[0]][0], feature_points[triangle[0]][1]),
@@ -156,6 +161,9 @@ class FaceWarper:
         for triangle in triangles:
             pts = points[triangle]
             cv2.fillConvexPoly(mask, pts, 255)
+        # # Fill the face region
+        # hull = cv2.convexHull(points)
+        # cv2.fillConvexPoly(mask, hull, 255)
             
         # Save the full face mask before cropping
         cv2.imwrite('full_face_mask.png', mask)
@@ -378,7 +386,7 @@ class FaceMask:
         smoothed_mask = smooth_mask(mask, height, width)
         
         
-        return smoothed_mask
+        return mask
 
 def main():
     # Initialize components

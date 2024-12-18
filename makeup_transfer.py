@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import face_detection_pipeline as FacePipeline
 from alpha_blending import FaceBlender
-import shadeRecover
+import shadow_recover 
 
 class MakeupTransfer:
     """
@@ -32,10 +32,14 @@ class MakeupTransfer:
         if makeup_image is None:
             raise FileNotFoundError("Reference image doesn't exist")
             
-        return (
-            self._resize_image(source_image),
-            self._resize_image(makeup_image)
-        )
+        # First resize height
+        source_image = self._resize_image(source_image)
+        makeup_image = self._resize_image(makeup_image)
+        
+        # Then ensure same width by resizing makeup image to match source width
+        makeup_image = cv2.resize(makeup_image, (source_image.shape[1], source_image.shape[0]))
+        
+        return source_image, makeup_image
     
     def _resize_image(self, image: np.ndarray) -> np.ndarray:
         """Resize image to maintain aspect ratio with target height."""
@@ -76,6 +80,34 @@ class MakeupTransfer:
         (makeup_output, makeup_features, makeup_tri,makeup_mask,
          makeup_light, makeup_color, makeup_struct, makeup_texture) = self.process_image(makeup_image)
         
+        # Save source components
+        cv2.imwrite('source_structure.png', (source_struct * 255).astype(np.uint8))
+        cv2.imwrite('source_detail.png', (source_texture * 255).astype(np.uint8))
+        
+        # Convert and save source color (LAB color channels)
+        source_color_vis = cv2.cvtColor(np.dstack([np.ones_like(source_color[:,:,0])*128, 
+                                                source_color[:,:,0], 
+                                                source_color[:,:,1]]), 
+                                    cv2.COLOR_LAB2BGR)
+        cv2.imwrite('source_color.png', source_color_vis)
+        
+        # Save makeup components
+        cv2.imwrite('makeup_structure.png', (makeup_struct * 255).astype(np.uint8))
+        cv2.imwrite('makeup_detail.png', (makeup_texture * 255).astype(np.uint8))
+        
+        # Convert and save makeup color (LAB color channels)
+        makeup_color_vis = cv2.cvtColor(np.dstack([np.ones_like(makeup_color[:,:,0])*128, 
+                                                makeup_color[:,:,0], 
+                                                makeup_color[:,:,1]]), 
+                                    cv2.COLOR_LAB2BGR)
+        cv2.imwrite('makeup_color.png', makeup_color_vis)
+        
+        # Resize makeup components to match source dimensions if needed
+        # if source_mask.shape != makeup_mask.shape:
+        #     makeup_mask = cv2.resize(makeup_mask, 
+        #                             (source_mask.shape[1], source_mask.shape[0]),
+        #                             interpolation=cv2.INTER_NEAREST)
+        
         if source_texture.shape != makeup_texture.shape:
             makeup_texture = cv2.resize(makeup_texture, 
                                       (source_texture.shape[1], source_texture.shape[0]),
@@ -85,9 +117,19 @@ class MakeupTransfer:
             makeup_color = cv2.resize(makeup_color,
                                     (source_color.shape[1], source_color.shape[0]),
                                     interpolation=cv2.INTER_AREA)
+            
+        print("splitted")
+        
         # Create tuples for blending
         source_tuple = (source_output, source_features, source_tri,source_mask)
         makeup_tuple = (makeup_output, makeup_features, makeup_tri,makeup_mask)
+        
+        print("tuples")
+        
+        print(f"Source shape: {source_image.shape}")
+        print(f"Makeup shape: {makeup_image.shape}")
+        print(f"Source mask shape: {source_mask.shape}")
+        print(f"Makeup mask shape: {makeup_mask.shape}")
         
         # Initialize result image
         result_image = np.zeros_like(cv2.cvtColor(source_image, cv2.COLOR_BGR2LAB))
@@ -97,12 +139,16 @@ class MakeupTransfer:
             source_texture, makeup_texture, 0, 1, source_tuple, makeup_tuple
         )
         
+        print("transfered skin details")
+        
         # Transfer color
         alpha_factor = 0.8
         result_image[:, :, 1:3] = self.face_blender.alpha_blend_images(
             source_color, makeup_color, 1 - alpha_factor, alpha_factor,
             source_tuple, makeup_tuple, True
         )
+        
+        print("color transfered")
         
         # Process structure layers
         scale_factor = 0.5
@@ -111,11 +157,15 @@ class MakeupTransfer:
         )
         makeup_struct_laplacian = cv2.Laplacian(makeup_struct, cv2.CV_64F)
         
+        print("structure prepare")
+        
         # Blend structure layers
         result_struct = self.face_blender.alpha_blend_images(
             source_struct_scaled, makeup_struct_laplacian, 1, 1,
             source_tuple, makeup_tuple
         )
+        
+        print("structure processed")
         
         # Combine detail and structure
         combined_layers = result_skin_detail + result_struct
@@ -123,8 +173,12 @@ class MakeupTransfer:
             np.max(combined_layers) - np.min(combined_layers)
         )
         
+        print("combined")
+        
         # Set final lightness channel
         result_image[:, :, 0] = (combined_layers * 255).astype(np.uint8)
+        
+        print("final")
         
         return cv2.cvtColor(result_image, cv2.COLOR_LAB2BGR)
     
@@ -154,7 +208,7 @@ def main():
         cv2.imshow("Output", comparison)
         
         # Apply shade recovery
-        shadeRecover.shadeRecover(source_image, result_image, makeup_image)
+        shadow_recover.shadeRecover(source_image, result_image, makeup_image)
         
         # Wait for key press and save if 's' is pressed
         key = cv2.waitKey(0)
