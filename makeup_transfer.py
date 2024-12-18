@@ -136,7 +136,7 @@ class MakeupTransfer:
         
         # Transfer skin detail
         result_skin_detail = self.face_blender.alpha_blend_images(
-            source_texture, makeup_texture, 0, 1, source_tuple, makeup_tuple
+            source_texture, makeup_texture, 1, 1, source_tuple, makeup_tuple,True
         )
         
         print("transfered skin details")
@@ -162,7 +162,7 @@ class MakeupTransfer:
         # Blend structure layers
         result_struct = self.face_blender.alpha_blend_images(
             source_struct_scaled, makeup_struct_laplacian, 1, 1,
-            source_tuple, makeup_tuple
+            source_tuple, makeup_tuple,True
         )
         
         print("structure processed")
