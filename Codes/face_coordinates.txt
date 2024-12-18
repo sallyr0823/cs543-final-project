@@ -1,2 +1,0 @@
-Source face coordinates (x, y, w, h): (112, 146, 274, 315)
-Target face coordinates (x, y, w, h): (102, 93, 253, 306)
