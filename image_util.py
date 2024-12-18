@@ -53,7 +53,10 @@ def save(filename, image, mask_nz=None, rescale=False, srgb=True):
     assert not np.isnan(image2).any()
     image2[image2 > 255] = 255
     image2[image2 < 0] = 0
+
+    # retrieve image2 information
     imsave(filename, image2.astype(np.uint8))
+    return image2
 
 def gray_to_rgb(gray):
     rgb = np.zeros((gray.shape[0], gray.shape[1], 3), dtype=gray.dtype)

@@ -379,7 +379,7 @@ class IntrinsicSolver(object):
         chromaticities = self.decomposition.chromaticities
 
         # split labels
-        new_labels = morphology.label(labels, neighbors=neighbors)
+        new_labels = morphology.label(labels)
 
         # map labels
         self.decomposition.labels_nz = new_labels[self.input.mask_nz]

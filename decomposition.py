@@ -113,11 +113,11 @@ class IntrinsicDecomposition(object):
 
         r, s = self.get_r_s()
         r_filename = '%s-r.png' % basename
-        image_util.save(r_filename, r, mask_nz=solver.input.mask_nz,
+        r_image2 = image_util.save(r_filename, r, mask_nz=solver.input.mask_nz,
                         rescale=True)
 
         s_filename = '%s-s.png' % basename
-        image_util.save(s_filename, s, mask_nz=solver.input.mask_nz,
+        s_image2 = image_util.save(s_filename, s, mask_nz=solver.input.mask_nz,
                         rescale=True)
 
         if save_extra:

@@ -40,7 +40,7 @@ class IntrinsicInput(object):
         if mask is not None:
             if mask.ndim != 2:
                 raise ValueError("Invalid mask")
-            self._mask = mask.astype(np.bool, copy=True)
+            self._mask = mask.astype(bool, copy=True)
         else:
             self._mask = np.ones((self.rows, self.cols), dtype=bool)
         self._mask.setflags(write=False)
@@ -97,6 +97,7 @@ class IntrinsicInput(object):
         """ Load input from files """
 
         image_rgb = image_util.load(image_filename, is_srgb=image_is_srgb)
+        # image_rgb = image_filename
 
         if mask_filename:
             mask = image_util.load_mask(mask_filename)
@@ -124,6 +125,45 @@ class IntrinsicInput(object):
             judgements=judgements,
             dataset=dataset, id=id,
         )
+
+
+    @staticmethod
+    def from_array(image, image_is_srgb=True, mask_filename=None,
+                  r_gt_filename=None, s_gt_filename=None, gt_is_srgb=False,
+                  judgements_filename=None, dataset=None, id=None):
+        """ Load input from files """
+
+        image = image.astype(np.float32)/ 255.0
+        if is_srgb:
+            image = srgb_to_rgb(image)
+
+        if mask_filename:
+            mask = image_util.load_mask(mask_filename)
+        else:
+            mask = None
+
+        if r_gt_filename:
+            r_gt = image_util.load(r_gt_filename, is_srgb=gt_is_srgb)
+        else:
+            r_gt = None
+
+        if s_gt_filename:
+            s_gt = image_util.load(s_gt_filename, is_srgb=gt_is_srgb)
+        else:
+            s_gt = None
+
+        if judgements_filename:
+            judgements = HumanReflectanceJudgements.from_file(judgements_filename)
+        else:
+            judgements = None
+
+        return IntrinsicInput(
+            image_rgb=image_rgb, mask=mask,
+            r_gt=r_gt, s_gt=s_gt,
+            judgements=judgements,
+            dataset=dataset, id=id,
+        )
+
 
     def downsample(self, factor=2.0):
         """ Return a new input at a lower resolution (while keeping ground

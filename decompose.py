@@ -1,6 +1,10 @@
 import os
 import sys
 import argparse
+import sys
+sys.path.append("/root/Digital_MakeUp_Face_Generation/Codes")
+from FaceDetector import FaceExtractor
+import cv2
 
 
 
@@ -101,13 +105,28 @@ if __name__ == '__main__':
     print(('  r_filename:', r_filename))
     print(('  s_filename:', s_filename))
 
-    # load input
+
+    sourceImage = cv2.imread(image_filename)
+    f = FaceExtractor()
+    # output_image1, feature_points1, triangulation1,K1 = FeatureDetection.landmark_detection(sourceImage)
+    output_image1, feature_points1, triangulation1,K1 = f.landmark_pipeline(sourceImage)
+    
+    cv2.imwrite("temp_output.png",output_image1)
+
     input = IntrinsicInput.from_file(
-        image_filename,
+        "temp_output.png",
         image_is_srgb=sRGB,
         mask_filename=mask_filename,
         judgements_filename=judgements_filename,
     )
+
+
+    # input = IntrinsicInput.from_array(
+    # makeUpLightness_3channel, 
+    # image_is_srgb=False,  
+    # mask_filename=mask_filename,
+    # judgements_filename = judgements_filename,
+    # )
 
     print(('mask_nnz: %s' % input.mask_nnz))
     print(('rows * cols: %s' % (input.rows * input.cols)))
@@ -123,7 +142,7 @@ if __name__ == '__main__':
     # solve
     solver = IntrinsicSolver(input, params)
     r, s, decomposition = solver.solve()
-
+    print("reach here")
     # save output
     image_util.save(r_filename, r, mask_nz=input.mask_nz, rescale=True, srgb=sRGB)
     image_util.save(s_filename, s, mask_nz=input.mask_nz, rescale=True, srgb=sRGB)
