@@ -145,7 +145,7 @@ class MakeupTransfer:
         alpha_factor = 0.8
         result_image[:, :, 1:3] = self.face_blender.alpha_blend_images(
             source_color, makeup_color, 1 - alpha_factor, alpha_factor,
-            source_tuple, makeup_tuple, True
+            source_tuple, makeup_tuple,True
         )
         
         print("color transfered")

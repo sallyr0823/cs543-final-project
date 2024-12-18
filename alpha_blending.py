@@ -61,34 +61,29 @@ class FaceBlender:
             # Process each pixel in the bounding box
             for x in range(min_x, max_x + 1):
                 for y in range(min_y, max_y + 1):
-                    if skin_only:
-                        mask_value = source_mask[y][x]
-                        if mask_value == 0.0:  # 眼睛区域
-                            continue
-                        elif mask_value == 2.0:  # 嘴唇区域
-                            # 嘴唇的特殊处理
-                            point = np.array([x, y])
-                            if source_triangulation.find_simplex(point) == idx:
-                                weights = self.compute_barycentric_coordinates(point, source_vertices)
-                                target_point = np.sum([w * v for w, v in zip(weights, target_vertices)], axis=0)
-                                target_point = target_point.astype(int)
-                                blended_image[y, x] = target_image[target_point[1], target_point[0]]
-                        elif mask_value == 0.3:  # 眉毛区域
-                            # 可以使用不同的混合比例
-                            continue
-                        elif mask_value == 0.5:  # 鼻子轮廓
-                            continue
-                        elif mask_value == 1.0:  # 普通皮肤区域
-                            point = np.array([x, y])
-                            if source_triangulation.find_simplex(point) == idx:
-                                weights = self.compute_barycentric_coordinates(point, source_vertices)
-                                target_point = np.sum([w * v for w, v in zip(weights, target_vertices)], axis=0)
-                                target_point = target_point.astype(int)
-                                blended_image[y, x] = (
-                                    alpha_2 * target_image[target_point[1], target_point[0]] +
-                                    alpha_1 * source_image[y, x]
-                                )
-        
+                    if skin_only and not (source_mask[y][x] in [1, 2]):
+                        continue
+                        
+                    point = np.array([x, y])
+                    # Check if point is in current triangle
+                    if source_triangulation.find_simplex(point) == idx:
+                        # Calculate barycentric coordinates
+                        weights = self.compute_barycentric_coordinates(
+                            point, source_vertices
+                        )
+                        
+                        # Find corresponding point in target image
+                        target_point = np.sum([w * v for w, v in zip(weights, target_vertices)], axis=0)
+                        target_point = target_point.astype(int)
+                        
+                        if skin_only and source_mask[y][x] == 2:  # Special handling for lips
+                            blended_image[y, x] = target_image[target_point[1], target_point[0]]
+                        else:
+                            blended_image[y, x] = (
+                                alpha_2 * target_image[target_point[1], target_point[0]] +
+                                alpha_1 * source_image[y, x]
+                            )
+                            
         return blended_image
 
 def main():

@@ -162,8 +162,8 @@ class FaceWarper:
             pts = points[triangle]
             cv2.fillConvexPoly(mask, pts, 255)
         # # Fill the face region
-        # hull = cv2.convexHull(points)
-        # cv2.fillConvexPoly(mask, hull, 255)
+        hull = cv2.convexHull(points)
+        cv2.fillConvexPoly(mask, hull, 255)
             
         # Save the full face mask before cropping
         cv2.imwrite('full_face_mask.png', mask)
@@ -308,7 +308,7 @@ def smooth_mask(mask, height, width):
     return smoothed_mask
 
 def wls_filter(image_orig, beta):
-
+    beta = gaussian_filter(beta, sigma = 0.5)
     alpha = 1.2
     lambda_ = 0.2 # as paper
     eps = 1e-4
@@ -383,10 +383,10 @@ class FaceMask:
         # mask = (mask * 255).astype(np.uint8)
         cv2.imwrite("full_face_mask.png", mask)
         # Apply the specialized smoothing
-        smoothed_mask = smooth_mask(mask, height, width)
-        
-        
+        # smoothed_mask = smooth_mask(mask, height, width)
         return mask
+        
+#  return smoothed_mask       
 
 def main():
     # Initialize components
