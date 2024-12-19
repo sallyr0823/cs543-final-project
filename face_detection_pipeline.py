@@ -308,7 +308,7 @@ def smooth_mask(mask, height, width):
     return smoothed_mask
 
 def wls_filter(image_orig, beta):
-    beta = gaussian_filter(beta, sigma = 0.5)
+    # beta = gaussian_filter(beta, sigma = 0.5)
     alpha = 1.2
     lambda_ = 0.2 # as paper
     eps = 1e-4

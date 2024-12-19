@@ -54,6 +54,7 @@ class MakeupTransfer:
         output_image, feature_points, triangulation,mask = (
             l.landmark_detection(image)
         )
+        print("11")
         lab_image = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         lightness = lab_image[:, :, 0]
         color = lab_image[:, :, 1:3]
@@ -136,7 +137,7 @@ class MakeupTransfer:
         
         # Transfer skin detail
         result_skin_detail = self.face_blender.alpha_blend_images(
-            source_texture, makeup_texture, 1, 1, source_tuple, makeup_tuple,True
+            source_texture, makeup_texture, 0, 1, source_tuple, makeup_tuple,True
         )
         
         print("transfered skin details")
@@ -145,7 +146,7 @@ class MakeupTransfer:
         alpha_factor = 0.8
         result_image[:, :, 1:3] = self.face_blender.alpha_blend_images(
             source_color, makeup_color, 1 - alpha_factor, alpha_factor,
-            source_tuple, makeup_tuple,True
+            source_tuple, makeup_tuple,False
         )
         
         print("color transfered")
@@ -162,7 +163,7 @@ class MakeupTransfer:
         # Blend structure layers
         result_struct = self.face_blender.alpha_blend_images(
             source_struct_scaled, makeup_struct_laplacian, 1, 1,
-            source_tuple, makeup_tuple,True
+            source_tuple, makeup_tuple,False
         )
         
         print("structure processed")
@@ -200,7 +201,6 @@ def main():
         source_image, makeup_image = makeup_transfer.load_and_validate_images(
             sys.argv[1], sys.argv[2]
         )
-        
         result_image = makeup_transfer.transfer_makeup(source_image, makeup_image)
         
         # Display results

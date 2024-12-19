@@ -65,6 +65,7 @@ class FaceBlender:
                         continue
                         
                     point = np.array([x, y])
+                    
                     # Check if point is in current triangle
                     if source_triangulation.find_simplex(point) == idx:
                         # Calculate barycentric coordinates
