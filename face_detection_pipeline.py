@@ -161,11 +161,9 @@ class FaceWarper:
         for triangle in triangles:
             pts = points[triangle]
             cv2.fillConvexPoly(mask, pts, 255)
-        # # Fill the face region
         hull = cv2.convexHull(points)
         cv2.fillConvexPoly(mask, hull, 255)
             
-        # Save the full face mask before cropping
         cv2.imwrite('full_face_mask.png', mask)
         
         x, y, w, h = cv2.boundingRect(points[np.unique(triangles.flatten())])
@@ -176,19 +174,18 @@ class FaceWarper:
         b, g, r = cv2.split(cropped_face)
         cropped_face_rgba = cv2.merge((b, g, r, cropped_mask))
         
-        # Return both the face and its coordinates and full face mask
+
         return cropped_face_rgba, (x, y, w, h), mask
 
     @staticmethod
     def warp_triangle(src_points, dst_points, src_triangle, dst_triangle, src_img, dst_img):
-        """Warp a triangular region from source to destination."""
         rect1 = cv2.boundingRect(src_triangle)
         rect2 = cv2.boundingRect(dst_triangle)
         
         src_triangle_offset = [(p[0] - rect1[0], p[1] - rect1[1]) for p in src_points]
         dst_triangle_offset = [(p[0] - rect2[0], p[1] - rect2[1]) for p in dst_points]
         
-        # Create mask
+
         mask = np.zeros((rect2[3], rect2[2], 3), dtype=np.float32)
         cv2.fillConvexPoly(mask, np.int32(dst_triangle_offset), (1.0, 1.0, 1.0))
         
@@ -198,10 +195,10 @@ class FaceWarper:
         if 0 in size1 or 0 in size2:
             return
             
-        # Convert source image region to float32
+
         src_img_rect = src_img[rect1[1]:rect1[1] + rect1[3], rect1[0]:rect1[0] + rect1[2]].astype(np.float32)
         
-        # Get the affine transform
+
         warp_mat = cv2.getAffineTransform(
             np.float32(src_triangle_offset),
             np.float32(dst_triangle_offset)
@@ -216,17 +213,13 @@ class FaceWarper:
             flags=cv2.INTER_LINEAR,
             borderMode=cv2.BORDER_REFLECT_101
         )
-        
-        # Apply mask to warped triangle
+     
         warped_triangle = warped_triangle * mask
         
-        # Get the destination region
         dst_region = dst_img[rect2[1]:rect2[1] + rect2[3], rect2[0]:rect2[0] + rect2[2]].astype(np.float32)
         
-        # Blend the triangles
         blended = dst_region * (1 - mask) + warped_triangle
-        
-        # Convert back to uint8 before assigning to destination image
+    
         dst_img[rect2[1]:rect2[1] + rect2[3], rect2[0]:rect2[0] + rect2[2]] = blended.astype(np.uint8)
 
     @staticmethod
@@ -234,16 +227,12 @@ class FaceWarper:
         """Replace face in fullbody image with warped makeup face using the original face mask."""
         result_image = fullbody_image.copy()
         
-        # Convert mask to float32 and normalize
         mask = face_mask.astype(np.float32) / 255.0
         
-        # Apply Gaussian blur to smooth the edges
         mask = cv2.GaussianBlur(mask, (19, 19), 0)
         
-        # Expand mask to 3 channels
         mask = np.stack([mask] * 3, axis=-1)
         
-        # Blend using the mask
         result_image = warped_img * mask + fullbody_image * (1 - mask)
         
         return result_image.astype(np.uint8)
@@ -255,50 +244,40 @@ def smooth_mask(mask, height, width):
     Apply specialized smoothing function using vectorized operations.
     β(p) = min(1 - k(q) * exp(-(q-p)²/(2σ²)))
     """
-    # Calculate σ²
     sigma_squared = min(height, width) / 25.0
     smoothed_mask = np.zeros_like(mask, dtype=np.float32)
     
-    # Define k(q) for different regions
     k_values = np.zeros_like(mask)
     k_values[np.abs(mask - 0.3) < 0.01] = 0.7  
     k_values[np.abs(mask - 1.0) < 0.01] = 1.0
     k_values[~((np.abs(mask - 0.3) < 0.01) | (np.abs(mask - 1.0) < 0.01))] = 0.0
     
-    # Create coordinate grids
     y_coords, x_coords = np.mgrid[0:height, 0:width]
     
-    # Process each pixel
     window_size = int(np.sqrt(sigma_squared)) 
     
     for y in range(height):
         for x in range(width):
             min_value = float('inf')
             p = np.array([x, y])
-            # Define window boundaries
             y_start = max(0, y - window_size)
             y_end = min(height, y + window_size + 1)
             x_start = max(0, x - window_size)
             x_end = min(width, x + window_size + 1)
             
-            # Calculate squared distances
+
             y_diff = y_coords[y_start:y_end, x_start:x_end] - y
             x_diff = x_coords[y_start:y_end, x_start:x_end] - x
             dist_squared = y_diff**2 + x_diff**2
             
-            # For each pixel q in window
             for qy in range(y_start, y_end):
                 for qx in range(x_start, x_end):
                     
                     q = np.array([qx, qy])
-                    
-                    # Calculate squared distance
                     dist_squared = np.sum((p - q) ** 2)
                     
-                    # Get k(q) based on the region
                     k = k_values[qy, qx]
-                    
-                    # Calculate the smoothing function
+ 
                     value = 1.0 - k * np.exp(-dist_squared / (2 * sigma_squared))
                     min_value = min(min_value, value)
                     
@@ -308,7 +287,7 @@ def smooth_mask(mask, height, width):
     return smoothed_mask
 
 def wls_filter(image_orig, beta):
-    # beta = gaussian_filter(beta, sigma = 0.5)
+    beta = gaussian_filter(beta, sigma = 0.5)
     alpha = 1.2
     lambda_ = 0.2 # as paper
     eps = 1e-4
@@ -356,23 +335,22 @@ class FaceMask:
         """Create binary mask of facial features with specific fill rules."""
         height, width = image.shape[:2]
         
-        # Start with black background
         mask = np.zeros((height, width), dtype=np.float32)
         
-        # 1. Find and fill face oval with white
+        #  Find and fill face oval with white
         face_points = np.array([landmarks[idx] for idx in FaceMask.FACIAL_PARTS["Face_oval"]], dtype=np.int32)
         cv2.fillPoly(mask, [face_points], 1.0)  # Fill with white (1.0)
         
-        # 2. Fill eyes with black
+        #  Fill eyes with black
         for eye_part in ["Left_eye", "Right_eye"]:
             eye_points = np.array([landmarks[idx] for idx in FaceMask.FACIAL_PARTS[eye_part]], dtype=np.int32)
             cv2.fillPoly(mask, [eye_points], 0.0)  # Fill with black (0.0)
         
-        # 3. Fill mouth with black
+        #  Fill mouth with black
         mouth_points = np.array([landmarks[idx] for idx in FaceMask.FACIAL_PARTS["Lips"]], dtype=np.int32)
-        cv2.fillPoly(mask, [mouth_points], 2.0)
+        cv2.fillPoly(mask, [mouth_points], 0.0)
         
-        # 4. Fill eyebrows with gray (0.3)
+        #  Fill eyebrows with gray (0.3)
         for brow_part in ["Left_eyebrow", "Right_eyebrow"]:
             brow_points = np.array([landmarks[idx] for idx in FaceMask.FACIAL_PARTS[brow_part]], dtype=np.int32)
             cv2.fillPoly(mask, [brow_points], 0.3)
@@ -381,12 +359,14 @@ class FaceMask:
         nose_points = np.array([landmarks[idx] for idx in FaceMask.FACIAL_PARTS["Nose"]], dtype=np.int32)
         cv2.polylines(mask, [nose_points], False, 0.5, 2)  # Changed to False to not close the contour
         # mask = (mask * 255).astype(np.uint8)
-        cv2.imwrite("full_face_mask.png", mask)
+        full_face_mask = (mask * 255).astype(np.uint8)
+        cv2.imwrite("full_face_mask.png", full_face_mask)
         # Apply the specialized smoothing
-        # smoothed_mask = smooth_mask(mask, height, width)
-        return mask
+        smoothed_mask = smooth_mask(mask, height, width)
+        smoothed_full_face_mask = (smoothed_mask * 255).astype(np.uint8)
+        cv2.imwrite("full_face_mask_smoothed.png",smoothed_full_face_mask)
         
-#  return smoothed_mask       
+        return smoothed_mask       
 
 def main():
     # Initialize components
@@ -452,7 +432,6 @@ def main():
     print("Warped image shape:", warped_img.shape)
     print("Warped image min/max values:", np.min(warped_img), np.max(warped_img))
     
-    # Replace face in fullbody image using stored coordinates
     final_result = FaceWarper.replace_face_in_fullbody(target_img, warped_img, full_target_mask)
  
     # Save final result

@@ -25,32 +25,13 @@ class FaceBlender:
         return np.array([w1, w2, w3])
 
     def alpha_blend_images(self, source_image, target_image,alpha_1, alpha_2, source_tuple, target_tuple, skin_only=False):
-        """
-        Morph between source and target images using feature points and triangulation
-        
-        Args:
-            source_image: Original image to be blended
-            target_image: Target image with features to be taken
-            alpha_1: Weight for source image
-            alpha_2: Weight for target image
-            source_tuple: (output_image, feature_points, triangulation, mask) for source
-            target_tuple: (output_image, feature_points, triangulation, mask) for target
-            skin_only: If True, only morph skin regions
-        """
-        # Unpack tuples
         _, source_points, source_triangulation,source_mask = source_tuple
         _, target_points, _,target_mask = target_tuple
-        
-        # Initialize output image
         blended_image = np.copy(source_image)
-        
-        # Process each triangle in the triangulation
         for idx, triangle in enumerate(source_triangulation.simplices):
-            # Get triangle vertices in both images
             source_vertices = [source_points[i] for i in triangle]
             target_vertices = [target_points[i] for i in triangle]
             
-            # Get bounding box for the triangle
             s_x = [v[0] for v in source_vertices]
             s_y = [v[1] for v in source_vertices]
             min_x, max_x = min(s_x), max(s_x)
@@ -68,7 +49,6 @@ class FaceBlender:
                     
                     # Check if point is in current triangle
                     if source_triangulation.find_simplex(point) == idx:
-                        # Calculate barycentric coordinates
                         weights = self.compute_barycentric_coordinates(
                             point, source_vertices
                         )
@@ -77,7 +57,7 @@ class FaceBlender:
                         target_point = np.sum([w * v for w, v in zip(weights, target_vertices)], axis=0)
                         target_point = target_point.astype(int)
                         
-                        if skin_only and source_mask[y][x] == 2:  # Special handling for lips
+                        if skin_only and (source_mask[y][x] == 2 or source_mask[y][x] == 0.3):  # Special handlin
                             blended_image[y, x] = target_image[target_point[1], target_point[0]]
                         else:
                             blended_image[y, x] = (
@@ -88,23 +68,18 @@ class FaceBlender:
         return blended_image
 
 def main():
-    # Initialize morpher
+
     blender = FaceBlender()
-    
-    # Load and resize source image
     source_path = "test.png"
     source_image = cv2.imread(source_path)
     if source_image is None:
         raise FileNotFoundError("Source image not found")
-    
-    # Load and resize target image
+
     target_path = "target.png"
     target_image = cv2.imread(target_path)
     if target_image is None:
         raise FileNotFoundError("Target image not found")
 
-    
-    # Detect landmarks and get feature points
     l = FacePipeline.FaceLandmarkDetector()
     source_tuple =l.landmark_detection(source_image)
     target_tuple = l.landmark_detection(target_image)
